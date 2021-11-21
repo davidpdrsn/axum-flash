@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None
+- None.
+
+# 0.1.1 (21. November, 2021)
+
+- Set cookie for all paths.
 
 # 0.1.0 (07. November, 2021)
 

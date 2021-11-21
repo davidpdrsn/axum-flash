@@ -199,6 +199,8 @@ impl Drop for Flash {
             .http_only(true)
             // don't send the cookie to other domains
             .same_site(cookie::SameSite::Strict)
+            // allow the cookie for all paths
+            .path("/")
             // expire after 10 minutes
             .max_age(
                 Duration::from_secs(10 * 60)
