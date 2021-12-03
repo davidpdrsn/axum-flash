@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None.
 
+# 0.2.0 (03. December, 2021)
+
+- Update to use axum-core 0.1 which requires users to depend on axum 0.4.
+
 # 0.1.1 (21. November, 2021)
 
 - Set cookie for all paths.
