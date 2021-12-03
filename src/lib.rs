@@ -81,11 +81,9 @@
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
 use self::private::SigningKey;
-use axum::{
-    async_trait,
-    extract::{Extension, FromRequest, RequestParts},
-    http::StatusCode,
-};
+use async_trait::async_trait;
+use axum_core::extract::{FromRequest, RequestParts};
+use http::StatusCode;
 use percent_encoding::AsciiSet;
 use private::UseSecureCookies;
 use serde::{Deserialize, Serialize};
@@ -159,9 +157,13 @@ where
         let cookies = Cookies::from_request(req).await?;
         let signing_key = SigningKey::from_request(req).await?;
 
-        let use_secure_cookies = match Extension::<UseSecureCookies>::from_request(req).await {
-            Ok(Extension(private::UseSecureCookies(value))) => value,
-            Err(_) => true,
+        let use_secure_cookies = if let Some(private::UseSecureCookies(value)) = req
+            .extensions()
+            .and_then(|ext| ext.get::<UseSecureCookies>().copied())
+        {
+            value
+        } else {
+            true
         };
 
         Ok(Self {

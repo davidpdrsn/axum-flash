@@ -2,8 +2,10 @@
 //!
 //! See [root module docs](crate) for an example.
 
-use crate::{private::UseSecureCookies, SigningKey};
-use axum::AddExtensionLayer;
+use crate::{
+    private::{AddExtensionLayer, UseSecureCookies},
+    SigningKey,
+};
 use cookie::Key;
 use tower_cookies::CookieManagerLayer;
 use tower_layer::{Layer, Stack};

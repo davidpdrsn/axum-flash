@@ -1,12 +1,10 @@
 //! Extractor for incoming flash messages.
 
 use crate::{private::SigningKey, FlashMessage, Level, COOKIE_NAME};
-use axum::{
-    async_trait,
-    extract::{FromRequest, RequestParts},
-    http::StatusCode,
-};
+use async_trait::async_trait;
+use axum_core::extract::{FromRequest, RequestParts};
 use cookie::CookieJar;
+use http::StatusCode;
 use tower_cookies::{Cookie, Cookies};
 
 /// Extractor for incoming flash messages.
