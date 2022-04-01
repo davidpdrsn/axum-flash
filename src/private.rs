@@ -33,10 +33,10 @@ where
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         let signing_key = req
             .extensions()
-            .and_then(|ext| ext.get::<SigningKey>().cloned())
+            .get::<SigningKey>().cloned()
             .ok_or((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "`SigningKey` extension missing. Did you forget to add `axum_flash::layer()` to your `axum::Router` or perhaps another extractor has taken the extensions?",
+                "`SigningKey` extension missing. Did you forget to add `axum_flash::layer()` to your `axum::Router`?",
             ))?;
 
         Ok(signing_key)
