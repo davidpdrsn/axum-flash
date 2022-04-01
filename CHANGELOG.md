@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- Update to axum-core 0.2 and tower-cookies 0.6
+- None.
+
+# 0.4.0 (1. April, 2022)
+
+- Update to axum-core 0.2 and tower-cookies 0.6 ([#3])
+
+[#3]: https://github.com/davidpdrsn/axum-flash/pull/3
 
 # 0.3.0 (10. February, 2022)
 
