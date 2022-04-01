@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- Update to axum-core 0.2 and tower-cookies 0.6
 
 # 0.3.0 (10. February, 2022)
 

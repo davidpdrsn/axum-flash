@@ -30,7 +30,7 @@
 //!
 //! async fn set_flash(mut flash: Flash) -> impl IntoResponse {
 //!     flash.debug("Hi from flash!");
-//!     Redirect::to("/".parse().unwrap())
+//!     Redirect::to("/")
 //! }
 //! # async {
 //! # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
@@ -157,9 +157,8 @@ where
         let cookies = Cookies::from_request(req).await?;
         let signing_key = SigningKey::from_request(req).await?;
 
-        let use_secure_cookies = if let Some(private::UseSecureCookies(value)) = req
-            .extensions()
-            .and_then(|ext| ext.get::<UseSecureCookies>().copied())
+        let use_secure_cookies = if let Some(private::UseSecureCookies(value)) =
+            req.extensions().get::<UseSecureCookies>().copied()
         {
             value
         } else {
@@ -292,7 +291,7 @@ mod tests {
 
         async fn set_flash(mut flash: Flash) -> impl IntoResponse {
             flash.debug("Hi from flash!");
-            Redirect::to("/".parse().unwrap())
+            Redirect::to("/")
         }
 
         let request = Request::builder()
