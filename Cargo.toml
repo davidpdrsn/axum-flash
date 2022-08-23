@@ -20,7 +20,7 @@ http = "0.2"
 percent-encoding = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tower-cookies = "0.6"
+tower-cookies = "0.7"
 tower-layer = "0.3"
 tower-service = "0.3"
 
