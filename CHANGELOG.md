@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
+- None.
+
+# 0.5.0 (23. August, 2022)
+
 - Update to tower-cookies 0.7
 
 # 0.4.0 (1. April, 2022)
