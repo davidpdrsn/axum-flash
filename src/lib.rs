@@ -1,36 +1,53 @@
 //! One-time notifications (aka flash messages) for [axum].
 //!
-//! Flash messages are stored in signed cookies managed by [tower-cookies]. This
-//! means if your app is otherwise also using cookies those should be managed by
-//! [tower-cookies] as well since it overrides response headers.
-//!
 //! # Example
 //!
 //! ```
 //! use axum::{
 //!     response::{IntoResponse, Redirect},
+//!     extract::FromRef,
 //!     routing::get,
 //!     Router,
 //! };
 //! use axum_flash::{IncomingFlashes, Flash, Key};
 //!
-//! // This should probably come from configuration
-//! let key = Key::generate();
+//! #[derive(Clone)]
+//! struct AppState {
+//!     flash_config: axum_flash::Config,
+//! }
 //!
-//! let app = Router::new()
-//!     .route("/", get(root))
-//!     .route("/set-flash", get(set_flash))
-//!     .layer(axum_flash::layer(key).with_cookie_manager());
+//! let app_state = AppState {
+//!     // Thek key should probably come from configuration
+//!     flash_config: axum_flash::Config::new(Key::generate()),
+//! };
 //!
-//! async fn root(flash: IncomingFlashes) -> impl IntoResponse {
-//!     for (level, text) in flash {
-//!         // ...
+//! // Our state type must implement this trait. That is how the config
+//! // is passed to axum-flash in a type safe way.
+//! impl FromRef<AppState> for axum_flash::Config {
+//!     fn from_ref(state: &AppState) -> axum_flash::Config {
+//!         state.flash_config.clone()
 //!     }
 //! }
 //!
-//! async fn set_flash(mut flash: Flash) -> impl IntoResponse {
-//!     flash.debug("Hi from flash!");
-//!     Redirect::to("/")
+//! let app = Router::with_state(app_state)
+//!     .route("/", get(root))
+//!     .route("/set-flash", get(set_flash));
+//!
+//! async fn root(flashes: IncomingFlashes) -> IncomingFlashes {
+//!     for (level, text) in &flashes {
+//!         // ...
+//!     }
+//!
+//!     // The flashes must be returned so the cookie is removed
+//!     flashes
+//! }
+//!
+//! async fn set_flash(flash: Flash) -> (Flash, Redirect) {
+//!     (
+//!         // The flash must be returned so the cookie is set
+//!         flash.debug("Hi from flash!"),
+//!         Redirect::to("/"),
+//!     )
 //! }
 //! # async {
 //! # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
@@ -80,95 +97,96 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
-use self::private::SigningKey;
 use async_trait::async_trait;
-use axum_core::extract::{FromRequest, RequestParts};
-use http::StatusCode;
-use percent_encoding::AsciiSet;
-use private::UseSecureCookies;
+use axum_core::{
+    extract::{FromRef, FromRequestParts},
+    response::{IntoResponseParts, ResponseParts},
+};
+use axum_extra::extract::cookie::{Cookie, SignedCookieJar};
+use http::{request::Parts, StatusCode};
 use serde::{Deserialize, Serialize};
-use std::{convert::TryInto, time::Duration};
-use tower_cookies::{Cookie, Cookies};
-
-#[doc(inline)]
-pub use self::{incoming_flash::IncomingFlashes, layer::layer};
-#[doc(no_inline)]
-pub use cookie::Key;
+use std::{borrow::Cow, fmt};
+use std::{
+    convert::{Infallible, TryInto},
+    time::Duration,
+};
 
 pub mod incoming_flash;
-pub mod layer;
 
-mod private;
+#[doc(inline)]
+pub use self::incoming_flash::IncomingFlashes;
+pub use axum_extra::extract::cookie::Key;
 
 /// Extractor for setting outgoing flash messages.
 ///
 /// The flashes will be stored in a signed cookie.
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct Flash {
     flashes: Vec<FlashMessage>,
-    signing_key: SigningKey,
     use_secure_cookies: bool,
-    cookies: Cookies,
+    key: Key,
+}
+
+impl fmt::Debug for Flash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Flash")
+            .field("flashes", &self.flashes)
+            .field("use_secure_cookies", &self.use_secure_cookies)
+            .field("key", &"REDACTED")
+            .finish()
+    }
 }
 
 impl Flash {
     /// Push an `Debug` flash message.
-    pub fn debug(&mut self, message: impl Into<String>) {
+    pub fn debug(self, message: impl Into<String>) -> Self {
         self.push(Level::Debug, message)
     }
 
     /// Push an `Info` flash message.
-    pub fn info(&mut self, message: impl Into<String>) {
+    pub fn info(self, message: impl Into<String>) -> Self {
         self.push(Level::Info, message)
     }
 
     /// Push an `Success` flash message.
-    pub fn success(&mut self, message: impl Into<String>) {
+    pub fn success(self, message: impl Into<String>) -> Self {
         self.push(Level::Success, message)
     }
 
     /// Push an `Warning` flash message.
-    pub fn warning(&mut self, message: impl Into<String>) {
+    pub fn warning(self, message: impl Into<String>) -> Self {
         self.push(Level::Warning, message)
     }
 
     /// Push an `Error` flash message.
-    pub fn error(&mut self, message: impl Into<String>) {
+    pub fn error(self, message: impl Into<String>) -> Self {
         self.push(Level::Error, message)
     }
 
     /// Push a flash message with the given level and message.
-    pub fn push(&mut self, level: Level, message: impl Into<String>) {
+    pub fn push(mut self, level: Level, message: impl Into<String>) -> Self {
         self.flashes.push(FlashMessage {
             message: message.into(),
             level,
         });
+        self
     }
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for Flash
+impl<S> FromRequestParts<S> for Flash
 where
-    B: Send,
+    S: Send + Sync,
+    Config: FromRef<S>,
 {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let cookies = Cookies::from_request(req).await?;
-        let signing_key = SigningKey::from_request(req).await?;
-
-        let use_secure_cookies = if let Some(private::UseSecureCookies(value)) =
-            req.extensions().get::<UseSecureCookies>().copied()
-        {
-            value
-        } else {
-            true
-        };
+    async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let config = Config::from_ref(state);
 
         Ok(Self {
-            cookies,
-            signing_key,
-            use_secure_cookies,
+            key: config.key,
+            use_secure_cookies: config.use_secure_cookies,
             flashes: Default::default(),
         })
     }
@@ -176,45 +194,45 @@ where
 
 const COOKIE_NAME: &str = "axum-flash";
 
-impl Drop for Flash {
-    fn drop(&mut self) {
+impl IntoResponseParts for Flash {
+    type Error = Infallible;
+
+    fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let json =
             serde_json::to_string(&self.flashes).expect("failed to serialize flash messages");
 
-        // process is inspired by
-        // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L54
+        let cookies = SignedCookieJar::new(self.key.clone());
 
-        let mut jar = cookie::CookieJar::new();
-        jar.signed_mut(&self.signing_key.0)
-            .add(Cookie::new(COOKIE_NAME, json));
-        let signed_cookie = jar.get(COOKIE_NAME).unwrap();
-        let signed_value = signed_cookie.value().as_bytes();
-
-        let encoded =
-            percent_encoding::percent_encode(signed_value, USERINFO_ENCODE_SET).to_string();
-
-        let cookie = Cookie::build(COOKIE_NAME, encoded)
-            // only send the cookie for https (maybe)
-            .secure(self.use_secure_cookies)
-            // don't allow javascript to access the cookie
-            .http_only(true)
-            // don't send the cookie to other domains
-            .same_site(cookie::SameSite::Strict)
-            // allow the cookie for all paths
-            .path("/")
-            // expire after 10 minutes
-            .max_age(
-                Duration::from_secs(10 * 60)
-                    .try_into()
-                    .expect("failed to convert `std::time::Duration` to `time::Duration`"),
-            )
-            .finish();
-
-        self.cookies.add(cookie);
+        let cookies = cookies.add(create_cookie(json, self.use_secure_cookies));
+        cookies.into_response_parts(res)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+pub(crate) fn create_cookie(
+    value: impl Into<Cow<'static, str>>,
+    use_secure_cookies: bool,
+) -> Cookie<'static> {
+    // process is inspired by
+    // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L54
+    Cookie::build(COOKIE_NAME, value)
+        // only send the cookie for https (maybe)
+        .secure(use_secure_cookies)
+        // don't allow javascript to access the cookie
+        .http_only(true)
+        // don't send the cookie to other domains
+        .same_site(cookie::SameSite::Strict)
+        // allow the cookie for all paths
+        .path("/")
+        // expire after 10 minutes
+        .max_age(
+            Duration::from_secs(10 * 60)
+                .try_into()
+                .expect("failed to convert `std::time::Duration` to `time::Duration`"),
+        )
+        .finish()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashMessage {
     #[serde(rename = "l")]
     level: Level,
@@ -237,27 +255,46 @@ pub enum Level {
     Error = 4,
 }
 
-// from
-// https://github.com/LukeMathWalker/actix-web-flash-messages/blob/ccd102de31ddbbbca1041416ff670cca1fb7b97a/src/storage/cookies.rs#L173-L196
-const FRAGMENT_ENCODE_SET: &AsciiSet = &percent_encoding::CONTROLS
-    .add(b' ')
-    .add(b'"')
-    .add(b'<')
-    .add(b'>')
-    .add(b'`');
-const PATH_ENCODE_SET: &AsciiSet = &FRAGMENT_ENCODE_SET.add(b'#').add(b'?').add(b'{').add(b'}');
-const USERINFO_ENCODE_SET: &AsciiSet = &PATH_ENCODE_SET
-    .add(b'/')
-    .add(b':')
-    .add(b';')
-    .add(b'=')
-    .add(b'@')
-    .add(b'[')
-    .add(b'\\')
-    .add(b']')
-    .add(b'^')
-    .add(b'|')
-    .add(b'%');
+/// Configuration for axum-flash.
+#[derive(Clone)]
+pub struct Config {
+    use_secure_cookies: bool,
+    key: Key,
+}
+
+impl Config {
+    /// Create a new `Config` using the given key.
+    pub fn new(key: Key) -> Self {
+        Self {
+            use_secure_cookies: true,
+            key,
+        }
+    }
+
+    /// Mark the cookie as secure so the cookie will only be sent on `https`.
+    ///
+    /// Defaults to marking cookies as secure.
+    ///
+    /// For local development, depending on your brwoser, you might have to set
+    /// this to `false` for flash messages to show up.
+    ///
+    /// See [mdn] for more details on secure cookies.
+    ///
+    /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+    pub fn use_secure_cookies(mut self, use_secure_cookies: bool) -> Self {
+        self.use_secure_cookies = use_secure_cookies;
+        self
+    }
+}
+
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Config")
+            .field("use_secure_cookies", &self.use_secure_cookies)
+            .field("key", &"REDACTED")
+            .finish()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -266,7 +303,7 @@ mod tests {
     use axum::{
         body::Body,
         http::{header, Request},
-        response::{IntoResponse, Redirect},
+        response::Redirect,
         routing::get,
         Router,
     };
@@ -274,24 +311,24 @@ mod tests {
 
     #[tokio::test]
     async fn basic() {
-        let key = Key::generate();
+        let config = Config::new(Key::generate()).use_secure_cookies(false);
 
-        let app = Router::new()
+        let app = Router::with_state(config)
             .route("/", get(root))
-            .route("/set-flash", get(set_flash))
-            .layer(layer(key).with_cookie_manager());
+            .route("/set-flash", get(set_flash));
 
-        async fn root(flash: IncomingFlashes) -> impl IntoResponse {
-            flash
+        async fn root(flash: IncomingFlashes) -> (IncomingFlashes, String) {
+            let messages = flash
                 .into_iter()
                 .map(|(level, text)| format!("{:?}: {}", level, text))
                 .collect::<Vec<_>>()
-                .join(", ")
+                .join(", ");
+            (flash, messages)
         }
 
-        async fn set_flash(mut flash: Flash) -> impl IntoResponse {
-            flash.debug("Hi from flash!");
-            Redirect::to("/")
+        #[axum::debug_handler(state = Config)]
+        async fn set_flash(flash: Flash) -> (Flash, Redirect) {
+            (flash.debug("Hi from flash!"), Redirect::to("/"))
         }
 
         let request = Request::builder()

@@ -1,18 +1,34 @@
 //! Extractor for incoming flash messages.
 
-use crate::{private::SigningKey, FlashMessage, Level, COOKIE_NAME};
+use crate::{create_cookie, Config, FlashMessage, Level, COOKIE_NAME};
 use async_trait::async_trait;
-use axum_core::extract::{FromRequest, RequestParts};
-use cookie::CookieJar;
-use http::StatusCode;
-use tower_cookies::{Cookie, Cookies};
+use axum_core::{
+    extract::{FromRef, FromRequestParts},
+    response::{IntoResponse, IntoResponseParts, Response, ResponseParts},
+};
+use axum_extra::extract::cookie::SignedCookieJar;
+use cookie::Key;
+use http::{request::Parts, StatusCode};
+use std::{convert::Infallible, fmt};
 
 /// Extractor for incoming flash messages.
 ///
 /// See [root module docs](crate) for an example.
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct IncomingFlashes {
     flashes: Vec<FlashMessage>,
+    use_secure_cookies: bool,
+    key: Key,
+}
+
+impl fmt::Debug for IncomingFlashes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IncomingFlashes")
+            .field("flashes", &self.flashes)
+            .field("use_secure_cookies", &self.use_secure_cookies)
+            .field("key", &"REDACTED")
+            .finish()
+    }
 }
 
 impl IncomingFlashes {
@@ -54,57 +70,48 @@ impl<'a> IntoIterator for &'a IncomingFlashes {
     }
 }
 
-impl IntoIterator for IncomingFlashes {
-    type Item = (Level, String);
-    type IntoIter = IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter(self.flashes.into_iter())
-    }
-}
-
 #[async_trait]
-impl<B> FromRequest<B> for IncomingFlashes
+impl<S> FromRequestParts<S> for IncomingFlashes
 where
-    B: Send,
+    S: Send + Sync,
+    Config: FromRef<S>,
 {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let cookies = Cookies::from_request(req).await?;
-        let SigningKey(signing_key) = SigningKey::from_request(req).await?;
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let config = Config::from_ref(state);
+        let cookies = SignedCookieJar::from_headers(&parts.headers, config.key.clone());
 
-        // process is inspired by
-        // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L87
-
+        // TODO(david): encoding
         let flashes = cookies
             .get(COOKIE_NAME)
-            .map(Cookie::into_owned)
-            .and_then(|cookie| {
-                let mut cookie_jar = CookieJar::new();
-                cookie_jar.add_original(cookie);
-                cookie_jar.signed(&signing_key).get(COOKIE_NAME)
-            })
+            .map(|cookie| cookie.into_owned())
             .and_then(|cookie| serde_json::from_str::<Vec<FlashMessage>>(cookie.value()).ok())
             .unwrap_or_default();
 
-        cookies.remove(Cookie::named(COOKIE_NAME));
-
-        Ok(Self { flashes })
+        Ok(Self {
+            flashes,
+            use_secure_cookies: config.use_secure_cookies,
+            key: config.key,
+        })
     }
 }
 
-/// Iterator of incoming flash messages.
-///
-/// Created with `IncomingFlash::into_iter`.
-#[derive(Debug)]
-pub struct IntoIter(std::vec::IntoIter<FlashMessage>);
+impl IntoResponseParts for IncomingFlashes {
+    type Error = Infallible;
 
-impl Iterator for IntoIter {
-    type Item = (Level, String);
+    fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
+        let cookies = SignedCookieJar::from_headers(res.headers(), self.key);
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let message = self.0.next()?;
-        Some((message.level, message.message))
+        let mut cookie = create_cookie("".to_owned(), self.use_secure_cookies);
+        cookie.make_removal();
+        let cookies = cookies.add(cookie);
+        cookies.into_response_parts(res)
+    }
+}
+
+impl IntoResponse for IncomingFlashes {
+    fn into_response(self) -> Response {
+        (self, ()).into_response()
     }
 }
