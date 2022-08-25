@@ -2,9 +2,9 @@
 //! name these but we can expose them upon request.
 
 use async_trait::async_trait;
-use axum_core::extract::{FromRequest, RequestParts};
-use http::Request;
-use http::StatusCode;
+use axum_core::extract::FromRequestParts;
+use axum_extra::extract::cookie::Key;
+use http::{request::Parts, Request, StatusCode};
 use std::fmt;
 use std::task::{Context, Poll};
 use tower_layer::Layer;
@@ -15,7 +15,7 @@ use tower_service::Service;
 pub struct UseSecureCookies(pub(crate) bool);
 
 #[derive(Clone)]
-pub struct SigningKey(pub(crate) cookie::Key);
+pub struct SigningKey(pub(crate) Key);
 
 impl fmt::Debug for SigningKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -24,22 +24,17 @@ impl fmt::Debug for SigningKey {
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for SigningKey
+impl<S> FromRequestParts<S> for SigningKey
 where
-    B: Send,
+    S: Send + Sync,
 {
-    type Rejection = (StatusCode, &'static str);
+    type Rejection = (http::StatusCode, &'static str);
 
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let signing_key = req
-            .extensions()
-            .get::<SigningKey>().cloned()
-            .ok_or((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "`SigningKey` extension missing. Did you forget to add `axum_flash::layer()` to your `axum::Router`?",
-            ))?;
-
-        Ok(signing_key)
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts.extensions.get::<SigningKey>().cloned().ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "`SigningKey` extension missing. Did you forget to add `axum_flash::layer()` to your `axum::Router`?",
+        ))
     }
 }
 

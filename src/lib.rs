@@ -81,19 +81,22 @@
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
 use self::private::SigningKey;
+#[doc(inline)]
+pub use self::{incoming_flash::IncomingFlashes, layer::layer};
 use async_trait::async_trait;
-use axum_core::extract::{FromRequest, RequestParts};
-use http::StatusCode;
+use axum_core::{
+    extract::FromRequestParts,
+    response::{IntoResponseParts, ResponseParts},
+};
+use axum_extra::extract::cookie::{Cookie, CookieJar};
+use http::{header::SET_COOKIE, request::Parts, StatusCode};
 use percent_encoding::AsciiSet;
 use private::UseSecureCookies;
 use serde::{Deserialize, Serialize};
-use std::{convert::TryInto, time::Duration};
-use tower_cookies::{Cookie, Cookies};
-
-#[doc(inline)]
-pub use self::{incoming_flash::IncomingFlashes, layer::layer};
-#[doc(no_inline)]
-pub use cookie::Key;
+use std::{
+    convert::{Infallible, TryInto},
+    time::Duration,
+};
 
 pub mod incoming_flash;
 pub mod layer;
@@ -108,7 +111,7 @@ pub struct Flash {
     flashes: Vec<FlashMessage>,
     signing_key: SigningKey,
     use_secure_cookies: bool,
-    cookies: Cookies,
+    cookies: cookie::CookieJar,
 }
 
 impl Flash {
@@ -147,23 +150,31 @@ impl Flash {
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for Flash
+impl<S> FromRequestParts<S> for Flash
 where
-    B: Send,
+    S: Send + Sync,
 {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let cookies = Cookies::from_request(req).await?;
-        let signing_key = SigningKey::from_request(req).await?;
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let req_cookies = CookieJar::from_request_parts(parts, state)
+            .await
+            .unwrap_or_default();
+        let signing_key = SigningKey::from_request_parts(parts, state).await?;
 
         let use_secure_cookies = if let Some(private::UseSecureCookies(value)) =
-            req.extensions().get::<UseSecureCookies>().copied()
+            parts.extensions.get::<UseSecureCookies>().copied()
         {
             value
         } else {
             true
         };
+
+        let mut cookies = cookie::CookieJar::new();
+
+        for cookie in req_cookies.iter() {
+            cookies.add(cookie.clone());
+        }
 
         Ok(Self {
             cookies,
@@ -176,8 +187,10 @@ where
 
 const COOKIE_NAME: &str = "axum-flash";
 
-impl Drop for Flash {
-    fn drop(&mut self) {
+impl IntoResponseParts for Flash {
+    type Error = Infallible;
+
+    fn into_response_parts(self, mut res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let json =
             serde_json::to_string(&self.flashes).expect("failed to serialize flash messages");
 
@@ -210,7 +223,16 @@ impl Drop for Flash {
             )
             .finish();
 
-        self.cookies.add(cookie);
+        let mut cookies = self.cookies.to_owned();
+        cookies.add(cookie);
+
+        for cookie in cookies.delta() {
+            if let Ok(header_value) = cookie.encoded().to_string().parse() {
+                res.headers_mut().append(SET_COOKIE, header_value);
+            }
+        }
+
+        Ok(res)
     }
 }
 
@@ -274,12 +296,13 @@ mod tests {
 
     #[tokio::test]
     async fn basic() {
+        use axum_extra::extract::cookie::Key;
         let key = Key::generate();
 
         let app = Router::new()
             .route("/", get(root))
             .route("/set-flash", get(set_flash))
-            .layer(layer(key).with_cookie_manager());
+            .layer(layer(key));
 
         async fn root(flash: IncomingFlashes) -> impl IntoResponse {
             flash

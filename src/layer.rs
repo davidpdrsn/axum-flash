@@ -7,7 +7,6 @@ use crate::{
     SigningKey,
 };
 use cookie::Key;
-use tower_cookies::CookieManagerLayer;
 use tower_layer::{Layer, Stack};
 
 /// [`Layer`] that applies the necessary middleware for `axum_flash` to work.
@@ -29,15 +28,6 @@ pub struct LayerBuilder<L> {
 }
 
 impl<L> LayerBuilder<L> {
-    /// Also add a [`CookieManagerLayer`] to the middleware stack.
-    ///
-    /// A [`CookieManagerLayer`] is required for `axum_flash` to work. If you're
-    /// manually adding a [`CookieManagerLayer`] elsewhere in your middleware
-    /// stack you don't have to call this method, otherwise you do.
-    pub fn with_cookie_manager(self) -> LayerBuilder<Stack<CookieManagerLayer, L>> {
-        self.push(CookieManagerLayer::new())
-    }
-
     /// Mark the cookie as secure so the cookie will only be sent on `https`.
     ///
     /// Defaults to marking cookies as secure.

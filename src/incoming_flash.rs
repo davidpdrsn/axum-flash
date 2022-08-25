@@ -2,10 +2,9 @@
 
 use crate::{private::SigningKey, FlashMessage, Level, COOKIE_NAME};
 use async_trait::async_trait;
-use axum_core::extract::{FromRequest, RequestParts};
-use cookie::CookieJar;
-use http::StatusCode;
-use tower_cookies::{Cookie, Cookies};
+use axum_core::extract::FromRequestParts;
+use axum_extra::extract::{cookie::Cookie, SignedCookieJar};
+use http::{header::SET_COOKIE, request::Parts, StatusCode};
 
 /// Extractor for incoming flash messages.
 ///
@@ -64,32 +63,35 @@ impl IntoIterator for IncomingFlashes {
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for IncomingFlashes
+impl<S> FromRequestParts<S> for IncomingFlashes
 where
-    B: Send,
+    S: Send + Sync,
 {
     type Rejection = (StatusCode, &'static str);
 
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let cookies = Cookies::from_request(req).await?;
-        let SigningKey(signing_key) = SigningKey::from_request(req).await?;
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let SigningKey(signing_key) = SigningKey::from_request_parts(parts, &state).await?;
+        let cookies = SignedCookieJar::from_headers(&parts.headers, signing_key);
 
         // process is inspired by
         // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L87
 
         let flashes = cookies
             .get(COOKIE_NAME)
-            .map(Cookie::into_owned)
-            .and_then(|cookie| {
-                let mut cookie_jar = CookieJar::new();
-                cookie_jar.add_original(cookie);
-                cookie_jar.signed(&signing_key).get(COOKIE_NAME)
-            })
+            .map(|cookie| cookie.into_owned())
             .and_then(|cookie| serde_json::from_str::<Vec<FlashMessage>>(cookie.value()).ok())
             .unwrap_or_default();
 
-        cookies.remove(Cookie::named(COOKIE_NAME));
+        let cookies = cookies.remove(Cookie::named(COOKIE_NAME));
 
+        //remove the old cookies to replace it with the new that doesnt include the IncomingFlashes.
+        parts.headers.remove(SET_COOKIE);
+
+        for cookie in cookies.iter() {
+            if let Ok(header_value) = cookie.encoded().to_string().parse() {
+                parts.headers.append(SET_COOKIE, header_value);
+            }
+        }
         Ok(Self { flashes })
     }
 }
