@@ -89,7 +89,7 @@ use axum_core::{
     response::{IntoResponseParts, ResponseParts},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
-use http::{header::SET_COOKIE, request::Parts, StatusCode};
+use http::{request::Parts, StatusCode};
 use percent_encoding::AsciiSet;
 use private::UseSecureCookies;
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,7 @@ pub struct Flash {
     flashes: Vec<FlashMessage>,
     signing_key: SigningKey,
     use_secure_cookies: bool,
-    cookies: cookie::CookieJar,
+    cookies: CookieJar,
 }
 
 impl Flash {
@@ -158,7 +158,7 @@ where
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let req_cookies = CookieJar::from_request_parts(parts, state)
+        let cookies = CookieJar::from_request_parts(parts, state)
             .await
             .unwrap_or_default();
         let signing_key = SigningKey::from_request_parts(parts, state).await?;
@@ -170,12 +170,6 @@ where
         } else {
             true
         };
-
-        let mut cookies = cookie::CookieJar::new();
-
-        for cookie in req_cookies.iter() {
-            cookies.add(cookie.clone());
-        }
 
         Ok(Self {
             cookies,
@@ -191,7 +185,7 @@ const COOKIE_NAME: &str = "axum-flash";
 impl IntoResponseParts for Flash {
     type Error = Infallible;
 
-    fn into_response_parts(self, mut res: ResponseParts) -> Result<ResponseParts, Self::Error> {
+    fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let json =
             serde_json::to_string(&self.flashes).expect("failed to serialize flash messages");
 
@@ -224,16 +218,8 @@ impl IntoResponseParts for Flash {
             )
             .finish();
 
-        let mut cookies = self.cookies.to_owned();
-        cookies.add(cookie);
-
-        for cookie in cookies.delta() {
-            if let Ok(header_value) = cookie.encoded().to_string().parse() {
-                res.headers_mut().append(SET_COOKIE, header_value);
-            }
-        }
-
-        Ok(res)
+        let cookies = self.cookies.add(cookie);
+        cookies.into_response_parts(res)
     }
 }
 
