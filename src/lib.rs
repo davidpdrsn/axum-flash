@@ -98,6 +98,7 @@ use std::{
     time::Duration,
 };
 
+pub use axum_extra::extract::cookie::Key;
 pub mod incoming_flash;
 pub mod layer;
 
@@ -296,7 +297,6 @@ mod tests {
 
     #[tokio::test]
     async fn basic() {
-        use axum_extra::extract::cookie::Key;
         let key = Key::generate();
 
         let app = Router::new()
