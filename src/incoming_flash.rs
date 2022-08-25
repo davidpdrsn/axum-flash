@@ -3,8 +3,8 @@
 use crate::{private::SigningKey, FlashMessage, Level, COOKIE_NAME};
 use async_trait::async_trait;
 use axum_core::extract::FromRequestParts;
-use axum_extra::extract::{cookie::Cookie, SignedCookieJar};
-use http::{header::SET_COOKIE, request::Parts, StatusCode};
+use axum_extra::extract::SignedCookieJar;
+use http::{request::Parts, StatusCode};
 
 /// Extractor for incoming flash messages.
 ///
@@ -82,16 +82,6 @@ where
             .and_then(|cookie| serde_json::from_str::<Vec<FlashMessage>>(cookie.value()).ok())
             .unwrap_or_default();
 
-        let cookies = cookies.remove(Cookie::named(COOKIE_NAME));
-
-        //remove the old cookies to replace it with the new that doesnt include the IncomingFlashes.
-        parts.headers.remove(SET_COOKIE);
-
-        for cookie in cookies.iter() {
-            if let Ok(header_value) = cookie.encoded().to_string().parse() {
-                parts.headers.append(SET_COOKIE, header_value);
-            }
-        }
         Ok(Self { flashes })
     }
 }

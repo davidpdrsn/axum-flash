@@ -88,9 +88,8 @@ use axum_core::{
     extract::FromRequestParts,
     response::{IntoResponseParts, ResponseParts},
 };
-use axum_extra::extract::cookie::{Cookie, CookieJar};
+use axum_extra::extract::cookie::{Cookie, SignedCookieJar};
 use http::{request::Parts, StatusCode};
-use percent_encoding::AsciiSet;
 use private::UseSecureCookies;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -110,9 +109,8 @@ mod private;
 #[derive(Debug)]
 pub struct Flash {
     flashes: Vec<FlashMessage>,
-    signing_key: SigningKey,
     use_secure_cookies: bool,
-    cookies: CookieJar,
+    signing_key: SigningKey,
 }
 
 impl Flash {
@@ -158,9 +156,6 @@ where
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let cookies = CookieJar::from_request_parts(parts, state)
-            .await
-            .unwrap_or_default();
         let signing_key = SigningKey::from_request_parts(parts, state).await?;
 
         let use_secure_cookies = if let Some(private::UseSecureCookies(value)) =
@@ -172,7 +167,6 @@ where
         };
 
         Ok(Self {
-            cookies,
             signing_key,
             use_secure_cookies,
             flashes: Default::default(),
@@ -188,20 +182,11 @@ impl IntoResponseParts for Flash {
     fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
         let json =
             serde_json::to_string(&self.flashes).expect("failed to serialize flash messages");
-
+        let cookies = SignedCookieJar::new(self.signing_key.0.clone());
         // process is inspired by
         // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L54
 
-        let mut jar = cookie::CookieJar::new();
-        jar.signed_mut(&self.signing_key.0)
-            .add(Cookie::new(COOKIE_NAME, json));
-        let signed_cookie = jar.get(COOKIE_NAME).unwrap();
-        let signed_value = signed_cookie.value().as_bytes();
-
-        let encoded =
-            percent_encoding::percent_encode(signed_value, USERINFO_ENCODE_SET).to_string();
-
-        let cookie = Cookie::build(COOKIE_NAME, encoded)
+        let cookie = Cookie::build(COOKIE_NAME, json)
             // only send the cookie for https (maybe)
             .secure(self.use_secure_cookies)
             // don't allow javascript to access the cookie
@@ -218,7 +203,7 @@ impl IntoResponseParts for Flash {
             )
             .finish();
 
-        let cookies = self.cookies.add(cookie);
+        let cookies = cookies.add(cookie);
         cookies.into_response_parts(res)
     }
 }
@@ -245,28 +230,6 @@ pub enum Level {
     #[allow(missing_docs)]
     Error = 4,
 }
-
-// from
-// https://github.com/LukeMathWalker/actix-web-flash-messages/blob/ccd102de31ddbbbca1041416ff670cca1fb7b97a/src/storage/cookies.rs#L173-L196
-const FRAGMENT_ENCODE_SET: &AsciiSet = &percent_encoding::CONTROLS
-    .add(b' ')
-    .add(b'"')
-    .add(b'<')
-    .add(b'>')
-    .add(b'`');
-const PATH_ENCODE_SET: &AsciiSet = &FRAGMENT_ENCODE_SET.add(b'#').add(b'?').add(b'{').add(b'}');
-const USERINFO_ENCODE_SET: &AsciiSet = &PATH_ENCODE_SET
-    .add(b'/')
-    .add(b':')
-    .add(b';')
-    .add(b'=')
-    .add(b'@')
-    .add(b'[')
-    .add(b'\\')
-    .add(b']')
-    .add(b'^')
-    .add(b'|')
-    .add(b'%');
 
 #[cfg(test)]
 mod tests {
