@@ -1,10 +1,14 @@
 //! Extractor for incoming flash messages.
 
-use crate::{private::SigningKey, FlashMessage, Level, COOKIE_NAME};
+use crate::{private::SigningKey, FlashMessage, Level, UseSecureCookies, COOKIE_NAME};
 use async_trait::async_trait;
-use axum_core::extract::FromRequestParts;
-use axum_extra::extract::SignedCookieJar;
+use axum_core::{
+    extract::FromRequestParts,
+    response::{IntoResponseParts, ResponseParts},
+};
+use axum_extra::extract::cookie::SignedCookieJar;
 use http::{request::Parts, StatusCode};
+use std::convert::Infallible;
 
 /// Extractor for incoming flash messages.
 ///
@@ -12,6 +16,8 @@ use http::{request::Parts, StatusCode};
 #[derive(Debug)]
 pub struct IncomingFlashes {
     flashes: Vec<FlashMessage>,
+    use_secure_cookies: bool,
+    signing_key: SigningKey,
 }
 
 impl IncomingFlashes {
@@ -70,11 +76,18 @@ where
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        let SigningKey(signing_key) = SigningKey::from_request_parts(parts, &state).await?;
-        let cookies = SignedCookieJar::from_headers(&parts.headers, signing_key);
+        let signing_key = SigningKey::from_request_parts(parts, &state).await?;
+        let cookies = SignedCookieJar::from_headers(&parts.headers, signing_key.0.clone());
 
         // process is inspired by
         // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L87
+        let use_secure_cookies = if let Some(UseSecureCookies(value)) =
+            parts.extensions.get::<UseSecureCookies>().copied()
+        {
+            value
+        } else {
+            true
+        };
 
         let flashes = cookies
             .get(COOKIE_NAME)
@@ -82,7 +95,27 @@ where
             .and_then(|cookie| serde_json::from_str::<Vec<FlashMessage>>(cookie.value()).ok())
             .unwrap_or_default();
 
-        Ok(Self { flashes })
+        Ok(Self {
+            flashes,
+            use_secure_cookies,
+            signing_key,
+        })
+    }
+}
+
+impl IntoResponseParts for IncomingFlashes {
+    type Error = Infallible;
+
+    fn into_response_parts(self, res: ResponseParts) -> Result<ResponseParts, Self::Error> {
+        let cookies = SignedCookieJar::from_headers(res.headers(), self.signing_key.0);
+
+        // If it exists then it means Flash executed its into_response_parts, so we ignore this.
+        if cookies.get(COOKIE_NAME).is_none() {
+            let cookies = cookies.add(crate::create_cookie("".to_owned(), self.use_secure_cookies));
+            cookies.into_response_parts(res)
+        } else {
+            Ok(res)
+        }
     }
 }
 

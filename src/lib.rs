@@ -90,7 +90,7 @@ use axum_core::{
 };
 use axum_extra::extract::cookie::{Cookie, SignedCookieJar};
 use http::{request::Parts, StatusCode};
-use private::UseSecureCookies;
+pub(crate) use private::UseSecureCookies;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::{Infallible, TryInto},
@@ -186,26 +186,28 @@ impl IntoResponseParts for Flash {
         // process is inspired by
         // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L54
 
-        let cookie = Cookie::build(COOKIE_NAME, json)
-            // only send the cookie for https (maybe)
-            .secure(self.use_secure_cookies)
-            // don't allow javascript to access the cookie
-            .http_only(true)
-            // don't send the cookie to other domains
-            .same_site(cookie::SameSite::Strict)
-            // allow the cookie for all paths
-            .path("/")
-            // expire after 10 minutes
-            .max_age(
-                Duration::from_secs(10 * 60)
-                    .try_into()
-                    .expect("failed to convert `std::time::Duration` to `time::Duration`"),
-            )
-            .finish();
-
-        let cookies = cookies.add(cookie);
+        let cookies = cookies.add(create_cookie(json, self.use_secure_cookies));
         cookies.into_response_parts(res)
     }
+}
+
+pub(crate) fn create_cookie<'a>(value: String, use_secure_cookies: bool) -> Cookie<'a> {
+    Cookie::build(COOKIE_NAME, value)
+        // only send the cookie for https (maybe)
+        .secure(use_secure_cookies)
+        // don't allow javascript to access the cookie
+        .http_only(true)
+        // don't send the cookie to other domains
+        .same_site(cookie::SameSite::Strict)
+        // allow the cookie for all paths
+        .path("/")
+        // expire after 10 minutes
+        .max_age(
+            Duration::from_secs(10 * 60)
+                .try_into()
+                .expect("failed to convert `std::time::Duration` to `time::Duration`"),
+        )
+        .finish()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
