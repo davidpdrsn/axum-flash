@@ -13,7 +13,7 @@ use std::convert::Infallible;
 /// Extractor for incoming flash messages.
 ///
 /// See [root module docs](crate) for an example.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IncomingFlashes {
     flashes: Vec<FlashMessage>,
     use_secure_cookies: bool,

@@ -106,7 +106,7 @@ mod private;
 /// Extractor for setting outgoing flash messages.
 ///
 /// The flashes will be stored in a signed cookie.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Flash {
     flashes: Vec<FlashMessage>,
     use_secure_cookies: bool,
@@ -210,7 +210,7 @@ pub(crate) fn create_cookie<'a>(value: String, use_secure_cookies: bool) -> Cook
         .finish()
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct FlashMessage {
     #[serde(rename = "l")]
     level: Level,
