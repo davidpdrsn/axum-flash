@@ -82,7 +82,6 @@ where
         let config = Config::from_ref(state);
         let cookies = SignedCookieJar::from_headers(&parts.headers, config.key.clone());
 
-        // TODO(david): encoding
         let flashes = cookies
             .get(COOKIE_NAME)
             .map(|cookie| cookie.into_owned())

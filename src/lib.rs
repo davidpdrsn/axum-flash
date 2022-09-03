@@ -55,7 +55,6 @@
 //! ```
 //!
 //! [axum]: https://crates.io/crates/axum
-//! [tower-cookies]: https://crates.io/crates/tower-cookies
 
 #![warn(
     clippy::all,
@@ -179,7 +178,7 @@ where
     S: Send + Sync,
     Config: FromRef<S>,
 {
-    type Rejection = (StatusCode, &'static str);
+    type Rejection = Infallible;
 
     async fn from_request_parts(_parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let config = Config::from_ref(state);
@@ -264,6 +263,8 @@ pub struct Config {
 
 impl Config {
     /// Create a new `Config` using the given key.
+    ///
+    /// Cookies will be signed using `key`.
     pub fn new(key: Key) -> Self {
         Self {
             use_secure_cookies: true,
