@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- Remove dependency on tower-cookies and use axum-extra instead ([#7])
+
+[#7]: https://github.com/davidpdrsn/axum-flash/pull/7
 
 # 0.5.0 (23. August, 2022)
 
