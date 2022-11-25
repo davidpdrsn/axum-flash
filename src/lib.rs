@@ -29,9 +29,10 @@
 //!     }
 //! }
 //!
-//! let app = Router::with_state(app_state)
+//! let app = Router::new()
 //!     .route("/", get(root))
-//!     .route("/set-flash", get(set_flash));
+//!     .route("/set-flash", get(set_flash))
+//!     .with_state(app_state);
 //!
 //! async fn root(flashes: IncomingFlashes) -> IncomingFlashes {
 //!     for (level, text) in &flashes {
@@ -414,9 +415,10 @@ mod tests {
     async fn basic() {
         let config = Config::new(Key::generate()).use_secure_cookies(false);
 
-        let app = Router::with_state(config)
+        let app = Router::new()
             .route("/", get(root))
-            .route("/set-flash", get(set_flash));
+            .route("/set-flash", get(set_flash))
+            .with_state(config);
 
         async fn root(flash: IncomingFlashes) -> (IncomingFlashes, String) {
             let messages = flash
