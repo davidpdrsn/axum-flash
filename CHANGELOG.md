@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- Update to axum 0.6.0
+- None.
+
+# 0.6.0 (25. November, 2022)
+
+- Update to axum 0.6.0 ([#8])
+
+[#8]: https://github.com/davidpdrsn/axum-flash/pull/8
 
 # 0.6.0-rc.1 (03. September, 2022)
 
