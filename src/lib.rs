@@ -17,7 +17,7 @@
 //! }
 //!
 //! let app_state = AppState {
-//!     // Thek key should probably come from configuration
+//!     // The key should probably come from configuration
 //!     flash_config: axum_flash::Config::new(Key::generate()),
 //! };
 //!
