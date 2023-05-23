@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None.
 
+# 0.7.0 (23. May, 2023)
+
+- Update to axum-extra 0.7 ([#11])
+- Update to cookie 0.17 ([#11])
+
+[#11]: https://github.com/davidpdrsn/axum-flash/pull/11
+
 # 0.6.0 (25. November, 2022)
 
 - Update to axum 0.6.0 ([#8])

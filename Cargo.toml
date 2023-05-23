@@ -1,6 +1,6 @@
 [package]
 name = "axum-flash"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2018"
 authors = ["David Pedersen <david.pdrsn@gmail.com>"]
 categories = ["asynchronous", "network-programming", "web-programming"]
