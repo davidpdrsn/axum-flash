@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- `axum-flash`'s MSRV is now 1.65.
 
 # 0.6.0 (25. November, 2022)
 
