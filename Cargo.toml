@@ -13,18 +13,19 @@ repository = "https://github.com/davidpdrsn/axum-flash"
 
 [dependencies]
 async-trait = "0.1"
-axum-core = "0.3.0"
-axum-extra = { version = "0.7", features = ["cookie", "cookie-signed"] }
+axum-core = "0.4.0"
+axum-extra = { version = "0.9", features = ["cookie", "cookie-signed"] }
 base64 = "0.21"
-cookie = { version = "0.17", features = ["signed", "percent-encode"] }
-http = "0.2"
+cookie = { version = "0.18", features = ["signed", "percent-encode"] }
+http = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tower-layer = "0.3"
 tower-service = "0.3"
 
 [dev-dependencies]
-axum = { version = "0.6.0", features = ["macros"] }
-hyper = "0.14"
+axum = { version = "0.7.0", features = ["macros"] }
+hyper = "1.0"
 tokio = { version = "1.20", features = ["macros", "rt-multi-thread"] }
 tower = "0.4"
+http-body-util = "0.1"
