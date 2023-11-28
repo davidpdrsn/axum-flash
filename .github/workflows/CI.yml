@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: ['1.60']
+        rust: ['1.67']
     steps:
     - uses: actions/checkout@master
     - uses: actions-rs/toolchain@v1
@@ -118,3 +118,15 @@ jobs:
       with:
         command: test
         args: --all-features --doc
+
+  cargo-public-api-crates:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@nightly
+    - uses: Swatinem/rust-cache@v2
+    - name: Install cargo-public-api-crates
+      run: |
+        cargo install --git https://github.com/davidpdrsn/cargo-public-api-crates
+    - name: cargo public-api-crates check
+      run: cargo public-api-crates check

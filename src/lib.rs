@@ -50,9 +50,7 @@
 //!         Redirect::to("/"),
 //!     )
 //! }
-//! # async {
-//! # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
-//! # };
+//! # let _: Router = app;
 //! ```
 //!
 //! [axum]: https://crates.io/crates/axum
@@ -91,7 +89,7 @@
     missing_debug_implementations,
     missing_docs
 )]
-#![deny(unreachable_pub, private_in_public)]
+#![deny(unreachable_pub)]
 #![allow(elided_lifetimes_in_paths, clippy::type_complexity)]
 #![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -210,7 +208,7 @@ pub(crate) fn create_cookie(
 ) -> Cookie<'static> {
     // process is inspired by
     // https://github.com/LukeMathWalker/actix-web-flash-messages/blob/main/src/storage/cookies.rs#L54
-    Cookie::build(COOKIE_NAME, value)
+    Cookie::build((COOKIE_NAME, value))
         // only send the cookie for https (maybe)
         .secure(use_secure_cookies)
         // don't allow javascript to access the cookie
@@ -225,7 +223,7 @@ pub(crate) fn create_cookie(
                 .try_into()
                 .expect("failed to convert `std::time::Duration` to `time::Duration`"),
         )
-        .finish()
+        .build()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -409,6 +407,7 @@ mod tests {
         routing::get,
         Router,
     };
+    use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -454,7 +453,7 @@ mod tests {
             .unwrap()
             .contains("Max-Age=0"),);
 
-        let bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert_eq!(body, "Debug: Hi from flash!");
     }

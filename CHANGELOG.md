@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- Update to axum-core 0.4 (and axum 0.7)
+- Update to cookie 0.18
+- Update to http 1.0
+- MSRV is now 1.67
+
+# 0.7.0 (23. May, 2023)
+
+- Update to axum-extra 0.7 ([#11])
+- Update to cookie 0.17 ([#11])
+
+[#11]: https://github.com/davidpdrsn/axum-flash/pull/11
 
 # 0.7.0 (23. May, 2023)
 
