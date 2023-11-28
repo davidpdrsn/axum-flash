@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # Unreleased
 
-- None.
+- Update to axum-core 0.4 (and axum 0.7)
+- Update to cookie 0.18
+- Update to http 1.0
 
 # 0.7.0 (23. May, 2023)
 
